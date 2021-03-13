@@ -9,6 +9,8 @@ Created on Sat Mar 13 13:26:04 2021
 import os
 from osgeo import ogr
 from shapely.wkt import loads
+from shapely.geometry import MultiPolygon, MultiPoint, asPoint
+import numpy as np
 
 ##---- Caminho para pasta de trabalho
 path = r'C:\Dados\spatial_sampling'
@@ -75,10 +77,49 @@ def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
 
 # in_pol = path + talhao
 # pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
-
 # write_shp(pol_list,  path + r'\talhao_pol_out.shp', range(len(id_pol)), ogr.wkbPolygon, SR)
-
 
 # in_pts = path + amostra
 # pts_list, id_pts, SR  = read_shp(in_pts, "id_amostra")
 # write_shp(pts_list,  path + r'\id_amostra_out.shp', range(len(id_pts)), ogr.wkbPoint, SR)
+
+#####--------------------------------------------------------------------#####
+#*************** Funções esquemas amostrais  ********************************#
+#####--------------------------------------------------------------------#####
+##---- Gerar grid amostral - amostras regulares
+def amostra_regula(pol_shy, num_points):
+    def grid_regular(pol_shy, num_points):
+        num_step = np.int(np.sqrt(pol_shy.area) / np.sqrt(num_points))
+        min_x, min_y, max_x, max_y = pol_shy.bounds
+        min_x, min_y = (min_x-num_step, min_y-num_step)
+        max_x, max_y = (max_x+num_step, max_y+num_step)
+        offset = np.random.uniform(0, num_step)
+        x = (np.arange(min_x, max_x, step = num_step)) + offset
+        y = (np.arange(min_y, max_y, step = num_step)) + offset
+        xx,yy = np.meshgrid(x,y)
+        xx = xx.reshape((np.prod(xx.shape),))
+        yy = yy.reshape((np.prod(yy.shape),))
+        #- Converter coordenadas array numpy para pontos shapely
+        #points_list = [Point(i) for i in zip(xx,yy)]
+        points_list = list(map(asPoint, zip(xx, yy)))
+        points_inter = [pts for pts in points_list if pts.within(pol_shy)] 
+        points_shy = MultiPoint(points_inter)
+        return(points_shy)
+        
+    points_shy = grid_regular(pol_shy, num_points)
+    while len(points_shy) != num_points:
+        points_shy = grid_regular(pol_shy, num_points)
+        #print(len(points_shy))
+    
+    return points_shy
+
+in_pol = path + talhao
+pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
+pol_shy = MultiPolygon(pol_list) # pol_list[0] #
+
+inten = 5 # uma amostra para cada 5 (cinco) hectares
+num_points = np.int(pol_shy.area / 10000 / inten)
+pontos = amostra_regula(pol_shy, num_points)
+
+MultiPoint(pontos)
+
