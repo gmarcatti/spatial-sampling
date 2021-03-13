@@ -9,8 +9,9 @@ Created on Sat Mar 13 13:26:04 2021
 import os
 from osgeo import ogr
 from shapely.wkt import loads
-from shapely.geometry import MultiPolygon, MultiPoint, asPoint
+from shapely.geometry import MultiPolygon, MultiPoint, Point, asPoint
 import numpy as np
+from sklearn.cluster import KMeans
 
 ##---- Caminho para pasta de trabalho
 path = r'C:\Dados\spatial_sampling'
@@ -19,10 +20,15 @@ path = r'C:\Dados\spatial_sampling'
 talhao = r'\talhao_pol.shp'
 amostra = r'\amostra_pts.shp'
 
+##############################################################################
 #####--------------------------------------------------------------------#####
-#*************** Funções input - output  ************************************#
+#####------ Funções input - output --------------------------------------#####
 #####--------------------------------------------------------------------#####
-##---- Função importar feição espacial
+##############################################################################
+
+##--------------------------------------------------------------------------##
+##---- Importar feição espacial
+##--------------------------------------------------------------------------##
 def read_shp(in_shape, m_id):
     in_driver = ogr.GetDriverByName("ESRI Shapefile")
     in_data = in_driver.Open(in_shape, 0)
@@ -38,7 +44,9 @@ def read_shp(in_shape, m_id):
     return((in_list, mID_shy, spatialRef))
 
 
+##--------------------------------------------------------------------------##
 ##---- Função exportar feição espacial
+##--------------------------------------------------------------------------##
 def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
     # geom_type=ogr.wkbPoint ou geom_type=ogr.wkbPolygon
     out_driver = ogr.GetDriverByName("ESRI Shapefile")
@@ -83,10 +91,16 @@ def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
 # pts_list, id_pts, SR  = read_shp(in_pts, "id_amostra")
 # write_shp(pts_list,  path + r'\id_amostra_out.shp', range(len(id_pts)), ogr.wkbPoint, SR)
 
+##############################################################################
 #####--------------------------------------------------------------------#####
-#*************** Funções esquemas amostrais  ********************************#
+#####------ Funções esquemas amostrais ----------------------------------#####
 #####--------------------------------------------------------------------#####
+##############################################################################
+
+
+##--------------------------------------------------------------------------##
 ##---- Gerar grid amostral - amostras regulares
+##--------------------------------------------------------------------------##
 def amostra_regula(pol_shy, num_points):
     def grid_regular(pol_shy, num_points):
         num_step = np.int(np.sqrt(pol_shy.area) / np.sqrt(num_points))
@@ -103,8 +117,8 @@ def amostra_regula(pol_shy, num_points):
         #points_list = [Point(i) for i in zip(xx,yy)]
         points_list = list(map(asPoint, zip(xx, yy)))
         points_inter = [pts for pts in points_list if pts.within(pol_shy)] 
-        points_shy = MultiPoint(points_inter)
-        return(points_shy)
+        #points_shy = MultiPoint(points_inter)
+        return(points_inter)
         
     points_shy = grid_regular(pol_shy, num_points)
     while len(points_shy) != num_points:
@@ -119,7 +133,47 @@ pol_shy = MultiPolygon(pol_list) # pol_list[0] #
 
 inten = 5 # uma amostra para cada 5 (cinco) hectares
 num_points = np.int(pol_shy.area / 10000 / inten)
-pontos = amostra_regula(pol_shy, num_points)
+pontos_regular = amostra_regula(pol_shy, num_points)
 
-MultiPoint(pontos)
+MultiPoint(pontos_regular)
+
+
+##--------------------------------------------------------------------------##
+##---- Gerar grid amostral - amostras hexagonais com k-médias
+##--------------------------------------------------------------------------##
+def amostra_hex(pol, num_points, space_point = 10):
+    ##---- Função para converter poligono para pontos
+    def pol2pts(pol, space_point):
+        min_x, min_y, max_x, max_y = pol.bounds
+        x_pol = np.arange(min_x, max_x, step = space_point)
+        y_pol = np.arange(min_y, max_y, step = space_point)
+        xx_pol, yy_pol = np.meshgrid(x_pol, y_pol)
+        xx_pol = xx_pol.reshape((np.prod(xx_pol.shape),))
+        yy_pol = yy_pol.reshape((np.prod(yy_pol.shape),))
+        pts_list = []
+        # pixelWidth = num_step
+        for pts in zip(xx_pol, yy_pol):    
+            if Point(pts).within(pol):
+                pts_list.append(Point(pts))
+        return(pts_list)
+    
+    pts_shy = pol2pts(pol, space_point = space_point)
+    X = [[p.x, p.y] for p in pts_shy] 
+    kmeans = KMeans(n_clusters = num_points, random_state=0).fit(X)
+    pts_coords = kmeans.cluster_centers_
+    points_list = list(map(asPoint, pts_coords))
+    return points_list
+
+
+in_pol = path + talhao
+pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
+pol_shy = MultiPolygon(pol_list) # pol_list[0] #
+
+inten = 5 # uma amostra para cada 5 (cinco) hectares
+num_points = np.int(pol_shy.area / 10000 / inten)
+pontos_hexagono = amostra_hex(pol_shy, num_points)
+
+MultiPoint(pontos_hexagono)
+
+
 
