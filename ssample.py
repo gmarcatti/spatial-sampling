@@ -9,9 +9,10 @@ Created on Sat Mar 13 13:26:04 2021
 import os
 from osgeo import ogr
 from shapely.wkt import loads
-from shapely.geometry import MultiPolygon, MultiPoint, Point, asPoint
+from shapely.geometry import MultiPolygon, MultiPoint, Polygon, Point, asPoint
 import numpy as np
 from sklearn.cluster import KMeans
+from scipy.spatial import Voronoi
 
 ##---- Caminho para pasta de trabalho
 path = r'C:\Dados\spatial_sampling'
@@ -29,6 +30,7 @@ amostra = r'\amostra_pts.shp'
 ##--------------------------------------------------------------------------##
 ##---- Importar feição espacial
 ##--------------------------------------------------------------------------##
+
 def read_shp(in_shape, m_id):
     in_driver = ogr.GetDriverByName("ESRI Shapefile")
     in_data = in_driver.Open(in_shape, 0)
@@ -47,6 +49,7 @@ def read_shp(in_shape, m_id):
 ##--------------------------------------------------------------------------##
 ##---- Função exportar feição espacial
 ##--------------------------------------------------------------------------##
+
 def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
     # geom_type=ogr.wkbPoint ou geom_type=ogr.wkbPolygon
     out_driver = ogr.GetDriverByName("ESRI Shapefile")
@@ -101,6 +104,7 @@ def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
 ##--------------------------------------------------------------------------##
 ##---- Gerar grid amostral - amostras regulares
 ##--------------------------------------------------------------------------##
+
 def amostra_regula(pol_shy, num_points):
     def grid_regular(pol_shy, num_points):
         num_step = np.int(np.sqrt(pol_shy.area) / np.sqrt(num_points))
@@ -141,6 +145,7 @@ MultiPoint(pontos_regular)
 ##--------------------------------------------------------------------------##
 ##---- Gerar grid amostral - amostras hexagonais com k-médias
 ##--------------------------------------------------------------------------##
+
 def amostra_hex(pol, num_points, space_point = 10):
     ##---- Função para converter poligono para pontos
     def pol2pts(pol, space_point):
@@ -175,5 +180,48 @@ pontos_hexagono = amostra_hex(pol_shy, num_points)
 
 MultiPoint(pontos_hexagono)
 
+
+##############################################################################
+#####--------------------------------------------------------------------#####
+#####------ Funções auxiliares ------------------------------------------#####
+#####--------------------------------------------------------------------#####
+##############################################################################
+
+##--------------------------------------------------------------------------##
+##---- Gerar os polígonos de voronoi a partir de coordenadas x e y
+##--------------------------------------------------------------------------##
+
+def coords2vor(x, y, pol):
+    pts_shy = [Point(p) for p in zip(x, y)]
+    coords_arr = np.array(list(zip(x, y)))
+    min_x, min_y, max_x, max_y = pol.bounds
+    max_dist = Point(min_x, min_y).distance(Point(max_x, max_y)) * 3
+    min_x, min_y = (min_x-max_dist, min_y-max_dist)
+    max_x, max_y = (max_x+max_dist, max_y+max_dist)
+    bounds = [[max_x,max_y], [min_x,max_y], [max_x,min_y], [min_x,min_y]]
+    coords_arr = np.append(coords_arr, bounds, axis = 0)
+    vor = Voronoi(coords_arr)
+    pol = pol.buffer(0)
+    vor_list = []
+    for region in vor.regions:
+        if not -1 in region:
+            polygon_vor = Polygon([vor.vertices[i] for i in region])
+            if any([True for p in pts_shy if p.within(polygon_vor)]):
+                vor_list.append(polygon_vor)
+    vor_shy = [vor_i.intersection(pol) for vor_i in vor_list]
+    return(vor_shy)
+
+
+XY = [[p.x, p.y] for p in pontos_regular]
+xx, yy = zip(*XY)
+vor_shy = coords2vor(xx, yy, pol_shy)
+print(np.array([pol.area for pol in vor_shy]) / 10000)
+MultiPolygon(vor_shy)
+
+XY = [[p.x, p.y] for p in pontos_hexagono]
+xx, yy = zip(*XY)
+vor_shy = coords2vor(xx, yy, pol_shy)
+print(np.array([pol.area for pol in vor_shy]) / 10000)
+MultiPolygon(vor_shy)
 
 
