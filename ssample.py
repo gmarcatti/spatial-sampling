@@ -52,11 +52,22 @@ def read_shp(in_shape, m_id):
 
 def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
     # geom_type=ogr.wkbPoint ou geom_type=ogr.wkbPolygon
+    if id_shy is None: id_shy = range(1, len(shy)+1)
+    try:
+        id_i = iter(id_shy)
+        if isinstance(id_i, int):
+            id_type = ogr.OFTInteger
+        else:
+            id_type = ogr.OFTString
+    except:
+        if isinstance(id_shy, int):
+            id_type = ogr.OFTInteger
+        else:
+            id_type = ogr.OFTString
     out_driver = ogr.GetDriverByName("ESRI Shapefile")
     out_data = out_driver.CreateDataSource(out_shape)
     out_layer = out_data.CreateLayer("shy", geom_type=geom_type)
-    out_layer.CreateField(ogr.FieldDefn("m_id", ogr.OFTInteger))
-    if id_shy is None: id_shy = range(1, len(shy)+1)
+    out_layer.CreateField(ogr.FieldDefn("m_id", id_type))
     for i, p in enumerate(shy):
         feature = ogr.Feature(out_layer.GetLayerDefn())
         feature.SetField("m_id", id_shy[i])
@@ -237,7 +248,8 @@ pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
 #pol_shy = MultiPolygon(pol_list) # pol_list[0] #
 projeto_vor = []
 projeto_pts = []
-inten = 1 # uma amostra para cada 5 (cinco) hectares
+projeto_id = []
+inten = 5 # uma amostra para cada 5 (cinco) hectares
 for i, pol_i in enumerate(pol_list):
     #pol_i = pol_list[0]
     num_points = np.int(pol_i.area / 10000 / inten)
@@ -245,6 +257,7 @@ for i, pol_i in enumerate(pol_list):
     XY = [[p.x, p.y] for p in pontos_hexagono]
     xx, yy = zip(*XY)
     vor_shy = coords2vor(xx, yy, pol_i)
+    projeto_id.extend([id_pol[i]] * num_points)
     projeto_vor.extend(vor_shy)
     projeto_pts.extend(pontos_hexagono)
     vor_area = np.array([pol.area for pol in vor_shy]) / 10000
@@ -252,10 +265,10 @@ for i, pol_i in enumerate(pol_list):
 
 
 # Salver resultados em shapefiles
-pts_out = r'\pts_hex1.shp'
+pts_out = r'\pts_hex5.shp'
 pts_out_shape = path + pts_out
-write_shp(projeto_pts, pts_out_shape, None, ogr.wkbPoint, SR)
+write_shp(projeto_pts, pts_out_shape, projeto_id, ogr.wkbPoint, SR)
 
-pol_out = r'\voronoi_hex1.shp'
+pol_out = r'\voronoi_hex5.shp'
 pol_out_shape = path + pol_out
-write_shp(projeto_vor, pol_out_shape, None, ogr.wkbPolygon, SR)
+write_shp(projeto_vor, pol_out_shape, projeto_id, ogr.wkbPolygon, SR)
