@@ -56,6 +56,7 @@ def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
     out_data = out_driver.CreateDataSource(out_shape)
     out_layer = out_data.CreateLayer("shy", geom_type=geom_type)
     out_layer.CreateField(ogr.FieldDefn("m_id", ogr.OFTInteger))
+    if id_shy is None: id_shy = range(1, len(shy)+1)
     for i, p in enumerate(shy):
         feature = ogr.Feature(out_layer.GetLayerDefn())
         feature.SetField("m_id", id_shy[i])
@@ -170,15 +171,15 @@ def amostra_hex(pol, num_points, space_point = 10):
     return points_list
 
 
-in_pol = path + talhao
-pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
-pol_shy = MultiPolygon(pol_list) # pol_list[0] #
+# in_pol = path + talhao
+# pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
+# pol_shy = MultiPolygon(pol_list) # pol_list[0] #
 
-inten = 5 # uma amostra para cada 5 (cinco) hectares
-num_points = np.int(pol_shy.area / 10000 / inten)
-pontos_hexagono = amostra_hex(pol_shy, num_points)
+# inten = 5 # uma amostra para cada 5 (cinco) hectares
+# num_points = np.int(pol_shy.area / 10000 / inten)
+# pontos_hexagono = amostra_hex(pol_shy, num_points)
 
-MultiPoint(pontos_hexagono)
+# MultiPoint(pontos_hexagono)
 
 
 ##############################################################################
@@ -212,16 +213,49 @@ def coords2vor(x, y, pol):
     return(vor_shy)
 
 
-XY = [[p.x, p.y] for p in pontos_regular]
-xx, yy = zip(*XY)
-vor_shy = coords2vor(xx, yy, pol_shy)
-print(np.array([pol.area for pol in vor_shy]) / 10000)
-MultiPolygon(vor_shy)
+# XY = [[p.x, p.y] for p in pontos_regular]
+# xx, yy = zip(*XY)
+# vor_shy = coords2vor(xx, yy, pol_shy)
+# print(np.array([pol.area for pol in vor_shy]) / 10000)
+# MultiPolygon(vor_shy)
 
-XY = [[p.x, p.y] for p in pontos_hexagono]
-xx, yy = zip(*XY)
-vor_shy = coords2vor(xx, yy, pol_shy)
-print(np.array([pol.area for pol in vor_shy]) / 10000)
-MultiPolygon(vor_shy)
+# XY = [[p.x, p.y] for p in pontos_hexagono]
+# xx, yy = zip(*XY)
+# vor_shy = coords2vor(xx, yy, pol_shy)
+# print(np.array([pol.area for pol in vor_shy]) / 10000)
+# MultiPolygon(vor_shy)
 
 
+##############################################################################
+#####--------------------------------------------------------------------#####
+#####------ Executar procedimentos --------------------------------------#####
+#####--------------------------------------------------------------------#####
+##############################################################################
+
+in_pol = path + talhao
+pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
+#pol_shy = MultiPolygon(pol_list) # pol_list[0] #
+projeto_vor = []
+projeto_pts = []
+inten = 1 # uma amostra para cada 5 (cinco) hectares
+for i, pol_i in enumerate(pol_list):
+    #pol_i = pol_list[0]
+    num_points = np.int(pol_i.area / 10000 / inten)
+    pontos_hexagono = amostra_hex(pol_i, num_points)
+    XY = [[p.x, p.y] for p in pontos_hexagono]
+    xx, yy = zip(*XY)
+    vor_shy = coords2vor(xx, yy, pol_i)
+    projeto_vor.extend(vor_shy)
+    projeto_pts.extend(pontos_hexagono)
+    vor_area = np.array([pol.area for pol in vor_shy]) / 10000
+    print(id_pol[i], "- N:", len(vor_area), "; Média:", round(vor_area.mean(), 2), "; Desvio padrão:", round(vor_area.std(), 4))
+
+
+# Salver resultados em shapefiles
+pts_out = r'\pts_hex1.shp'
+pts_out_shape = path + pts_out
+write_shp(projeto_pts, pts_out_shape, None, ogr.wkbPoint, SR)
+
+pol_out = r'\voronoi_hex1.shp'
+pol_out_shape = path + pol_out
+write_shp(projeto_vor, pol_out_shape, None, ogr.wkbPolygon, SR)
