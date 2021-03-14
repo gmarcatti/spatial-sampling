@@ -2,7 +2,7 @@
 """
 Created on Sat Mar 13 13:26:04 2021
 
-@author: Adm
+@author: Gustavo Eduardo Marcatti
 """
 
 ##---- Importar bibliotecas necessárias
@@ -14,12 +14,20 @@ import numpy as np
 from sklearn.cluster import KMeans
 from scipy.spatial import Voronoi
 
+##############################################################################
+#####--------------------------------------------------------------------#####
+#####------ Dados para teste --------------------------------------------#####
+#####--------------------------------------------------------------------#####
+##############################################################################
+
 ##---- Caminho para pasta de trabalho
 path = r'C:\Dados\spatial_sampling'
 
 ##---- Arquivos shapefile de entrada
 talhao = r'\talhao_pol.shp'
-amostra = r'\amostra_pts.shp'
+
+
+
 
 ##############################################################################
 #####--------------------------------------------------------------------#####
@@ -32,6 +40,23 @@ amostra = r'\amostra_pts.shp'
 ##--------------------------------------------------------------------------##
 
 def read_shp(in_shape, m_id):
+    """
+    Importar feição espacial no formato shapefile
+
+    Parameters
+    ----------
+    in_shape : string
+        Caminho do tipo string do arquivo input shapefile (*.shp)
+    m_id : string
+        Nome do campo (field) de interesse para importação
+
+    Returns
+    -------
+    in_list : lista de feições no formato shapely;
+    mID_shy : lista de identificadores de cada feição;
+    spatialRef : Sistema de referência espacial
+
+    """
     in_driver = ogr.GetDriverByName("ESRI Shapefile")
     in_data = in_driver.Open(in_shape, 0)
     in_layer = in_data.GetLayer()
@@ -43,7 +68,7 @@ def read_shp(in_shape, m_id):
         mID_shy.append(feature.GetField(m_id))
         wkt_feature = loads(feature.geometry().ExportToWkt())
         in_list.append(wkt_feature)
-    return((in_list, mID_shy, spatialRef))
+    return in_list, mID_shy, spatialRef
 
 
 ##--------------------------------------------------------------------------##
@@ -51,6 +76,27 @@ def read_shp(in_shape, m_id):
 ##--------------------------------------------------------------------------##
 
 def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
+    """
+    Exportar feição espacial no formato shapefile
+
+    Parameters
+    ----------
+    shy : list de Point ou Polygon
+        Lista de feições espaciais no formato shapely
+    out_shape : string
+        Caminho do tipo string do arquivo output shapefile (*.shp)
+    id_shy : list
+        lista com identificadores de cada feição
+    geom_type : geom_type
+        Tipo de geometria: ogr.wkbPoint - ponto ou ogr.wkbPolygon - polígono
+    SR : spatialRef, optional
+        Sistema de referência espacial
+
+    Returns
+    -------
+    None.
+
+    """
     # geom_type=ogr.wkbPoint ou geom_type=ogr.wkbPolygon
     if id_shy is None: id_shy = range(1, len(shy)+1)
     try:
@@ -117,13 +163,40 @@ def write_shp(shy, out_shape, id_shy, geom_type, SR = None):
 ##---- Gerar grid amostral - amostras regulares
 ##--------------------------------------------------------------------------##
 
-def amostra_regula(pol_shy, num_points):
-    def grid_regular(pol_shy, num_points):
+def amostra_retangular(pol_shy, num_points, offset = None):
+    """
+    Gerar amostras regulares retangular (alinhamento sistemático) 
+
+    Parameters
+    ----------
+    pol_shy : Polygon shapely
+        Polígono que fornece os limites de alocação de amostras
+    num_points : int
+        Número de pontos amostrais
+    offset : float, optional
+        Número que determina o deslocamento do grid. Deve variar entre 0 e 1.
+        Em que 0 (zero) não há deslocamento e 1 (um) o deslocamento é 
+        máximo, isto é, uma unidade do tamanho da célula do grid amostral. 
+        offset também pode ser None (este é o padrão), e assim um número
+        aleatório entre 0 e 1 será utililzado como offset
+
+    Returns
+    -------
+    points_shy : list de Point shapely
+        Pontos amostrais retornados
+
+    """
+    def grid_retangular(pol_shy, num_points, offset = None):
         num_step = np.int(np.sqrt(pol_shy.area) / np.sqrt(num_points))
         min_x, min_y, max_x, max_y = pol_shy.bounds
         min_x, min_y = (min_x-num_step, min_y-num_step)
         max_x, max_y = (max_x+num_step, max_y+num_step)
-        offset = np.random.uniform(0, num_step)
+        if offset == None: 
+            offset = np.random.uniform(0, num_step)
+        elif offset == 0:
+            offset = 0
+        else:
+            offset = num_step * offset
         x = (np.arange(min_x, max_x, step = num_step)) + offset
         y = (np.arange(min_y, max_y, step = num_step)) + offset
         xx,yy = np.meshgrid(x,y)
@@ -136,32 +209,51 @@ def amostra_regula(pol_shy, num_points):
         #points_shy = MultiPoint(points_inter)
         return(points_inter)
         
-    points_shy = grid_regular(pol_shy, num_points)
+    points_shy = grid_retangular(pol_shy, num_points)
     while len(points_shy) != num_points:
-        points_shy = grid_regular(pol_shy, num_points)
+        points_shy = grid_retangular(pol_shy, num_points)
         #print(len(points_shy))
     
     return points_shy
 
-in_pol = path + talhao
-pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
-pol_shy = MultiPolygon(pol_list) # pol_list[0] #
+# in_pol = path + talhao
+# pol_list, id_pol, SR = read_shp(in_pol, "cod_talhao")
+# pol_shy = MultiPolygon(pol_list) # pol_list[0] #
 
-inten = 5 # uma amostra para cada 5 (cinco) hectares
-num_points = np.int(pol_shy.area / 10000 / inten)
-pontos_regular = amostra_regula(pol_shy, num_points)
+# inten = 5 # uma amostra para cada 5 (cinco) hectares
+# num_points = np.int(pol_shy.area / 10000 / inten)
+# pontos_regular = amostra_retangular(pol_shy, num_points)
 
-MultiPoint(pontos_regular)
+# MultiPoint(pontos_regular)
 
 
 ##--------------------------------------------------------------------------##
 ##---- Gerar grid amostral - amostras hexagonais com k-médias
 ##--------------------------------------------------------------------------##
 
-def amostra_hex(pol, num_points, space_point = 10):
+def amostra_hexagonal(pol_shy, num_points, space_point = 10):
+    """
+    Gerar amostras regulares hexagonal (alinhamento sistemático) 
+
+    Parameters
+    ----------
+    pol_shy : Polygon shapely
+        Polígono que fornece os limites de alocação de amostras
+    num_points : int
+        Número de pontos amostrais
+    space_point : int, optional
+        Espaçamento entre pontos utilizado para converter o Polígono em pontos
+        para execução do algoritmo k-médias de agrupamento 
+
+    Returns
+    -------
+    points_list : list de Point shapely
+        Pontos amostrais retornados
+
+    """
     ##---- Função para converter poligono para pontos
-    def pol2pts(pol, space_point):
-        min_x, min_y, max_x, max_y = pol.bounds
+    def pol2pts(pol_shy, space_point):
+        min_x, min_y, max_x, max_y = pol_shy.bounds
         x_pol = np.arange(min_x, max_x, step = space_point)
         y_pol = np.arange(min_y, max_y, step = space_point)
         xx_pol, yy_pol = np.meshgrid(x_pol, y_pol)
@@ -170,11 +262,11 @@ def amostra_hex(pol, num_points, space_point = 10):
         pts_list = []
         # pixelWidth = num_step
         for pts in zip(xx_pol, yy_pol):    
-            if Point(pts).within(pol):
+            if Point(pts).within(pol_shy):
                 pts_list.append(Point(pts))
         return(pts_list)
     
-    pts_shy = pol2pts(pol, space_point = space_point)
+    pts_shy = pol2pts(pol_shy, space_point = space_point)
     X = [[p.x, p.y] for p in pts_shy] 
     kmeans = KMeans(n_clusters = num_points, random_state=0).fit(X)
     pts_coords = kmeans.cluster_centers_
@@ -203,25 +295,45 @@ def amostra_hex(pol, num_points, space_point = 10):
 ##---- Gerar os polígonos de voronoi a partir de coordenadas x e y
 ##--------------------------------------------------------------------------##
 
-def coords2vor(x, y, pol):
+def coords2vor(x, y, pol_shy):
+    """
+    Gerar os polígonos de voronoi, retritos ao polígono de entrada,
+    a partir de coordenadas x e y. Os polígonos de voronoi podem ser
+    utilizados para representar a área de abrangência das amostras
+
+    Parameters
+    ----------
+    x : list de float
+        Coordenadas x
+    y : list de float
+        Coordenadas y
+    pol_shy : Polygon shapely
+        Polígono que fornece os limites para os polígonos de voronoi
+        
+    Returns
+    -------
+    vor_shy : list de Polygon shapely
+        Polígonos de voronoi
+
+    """
     pts_shy = [Point(p) for p in zip(x, y)]
     coords_arr = np.array(list(zip(x, y)))
-    min_x, min_y, max_x, max_y = pol.bounds
+    min_x, min_y, max_x, max_y = pol_shy.bounds
     max_dist = Point(min_x, min_y).distance(Point(max_x, max_y)) * 3
     min_x, min_y = (min_x-max_dist, min_y-max_dist)
     max_x, max_y = (max_x+max_dist, max_y+max_dist)
     bounds = [[max_x,max_y], [min_x,max_y], [max_x,min_y], [min_x,min_y]]
     coords_arr = np.append(coords_arr, bounds, axis = 0)
     vor = Voronoi(coords_arr)
-    pol = pol.buffer(0)
+    pol_shy = pol_shy.buffer(0) # corrigir pequenas imperfeições na feição
     vor_list = []
     for region in vor.regions:
         if not -1 in region:
             polygon_vor = Polygon([vor.vertices[i] for i in region])
             if any([True for p in pts_shy if p.within(polygon_vor)]):
                 vor_list.append(polygon_vor)
-    vor_shy = [vor_i.intersection(pol) for vor_i in vor_list]
-    return(vor_shy)
+    vor_shy = [vor_i.intersection(pol_shy) for vor_i in vor_list]
+    return vor_shy
 
 
 # XY = [[p.x, p.y] for p in pontos_regular]
@@ -253,7 +365,7 @@ inten = 5 # uma amostra para cada 5 (cinco) hectares
 for i, pol_i in enumerate(pol_list):
     #pol_i = pol_list[0]
     num_points = np.int(pol_i.area / 10000 / inten)
-    pontos_hexagono = amostra_hex(pol_i, num_points)
+    pontos_hexagono = amostra_hexagonal(pol_i, num_points)
     XY = [[p.x, p.y] for p in pontos_hexagono]
     xx, yy = zip(*XY)
     vor_shy = coords2vor(xx, yy, pol_i)
